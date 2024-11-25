@@ -5,7 +5,6 @@ import os
 import struct
 import math
 import random
-import sys
 
 class Block():
     def __init__(self, block_id, offset, status, type, file_no, order_no):
@@ -71,17 +70,29 @@ class Node():
         is_folder = bool(list[3])
         return Node(name, list[1], list[2], is_folder, "")
 
+    def __str__(self):
+        return f'''
+---------------------------
+Name: {self.name}
+Id: {self.id}
+Parent Id: {self.parent_id}
+Is Folder: {self.is_folder}
+Path: {self.path}
+        '''
+
 class FileSystem():
     def __init__(self):
         self.mode = "None"
         self.last_id = 1
         self.current_nodes = []
         self.table = Table()
+        self.current_file_path = ""
 
     def reset(self):
         self.mode = "None"
         self.last_id = 1
         self.current_nodes.clear()
+        self.current_file_path = ""
         self.table.reset()
         FileSystem.clear_treeview()
 
@@ -111,6 +122,7 @@ class FileSystem():
             self.current_nodes.append(node)
             treeview.insert("", "end", iid=str(node.id), text=f" {node.name}", open=True, image=photo_dir)
             create_nodes(node)
+            print(f"{node.name} isimli dosya açıldı.")
         else:
             self.reset()
             self.mode = "None"
@@ -128,9 +140,10 @@ class FileSystem():
 
             last_id = 0
             for node in self.current_nodes:
+                print(f"{node.name} adlı dosyanın meta bilgileri yazdırılmaya başlandı.")
                 block_offset = offset + self.table.block_size * position_list[last_id]
                 last_id += 1
-                self.table.block_list.append(Block(last_id, block_offset, 1, 0, 0, 0))
+                self.table.block_list.append(Block(last_id, block_offset, 1, 0, node.id, 0))
                 with open(folder_path, "r+b") as file:
                     file.seek(block_offset)
                     file.write(node.to_binary())
@@ -139,11 +152,11 @@ class FileSystem():
                         data = file.read()
                     contents = [data[i:i+self.table.block_size] for i in range(0, len(data), self.table.block_size)]
                     contents[-1] = contents[-1] + b'\x00' * (self.table.block_size - len(contents[-1]))
-                    for i, content in enumerate(contents):
-                        block_offset = offset + self.table.block_size * position_list[last_id]
-                        last_id += 1
-                        self.table.block_list.append(Block(last_id, block_offset, 1, 1, node.id, i + 1))
-                        with open(folder_path, "r+b") as file:
+                    with open(folder_path, "r+b") as file:
+                        for i, content in enumerate(contents):
+                            block_offset = offset + self.table.block_size * position_list[last_id]
+                            last_id += 1
+                            self.table.block_list.append(Block(last_id, block_offset, 1, 1, node.id, i + 1))
                             file.seek(block_offset)
                             file.write(content)
             
@@ -151,11 +164,12 @@ class FileSystem():
                 block_offset = offset + self.table.block_size * position_list[last_id]
                 last_id += 1
                 self.table.block_list.append(Block(last_id, block_offset, 0, 0, 0, 0))
-            
+            print("İçerikler yazdırılmaya başladı.")
             with open(folder_path, "r+b") as file:
                 file.seek(struct.calcsize("2I"))
                 for block in self.table.block_list:
                     file.write(block.to_binary())
+
 
         block_size = simpledialog.askinteger("", "Type Part Size")
         folder_path = filedialog.askdirectory()
@@ -168,11 +182,13 @@ class FileSystem():
                     file_size = os.path.getsize(node.path)
                     content_number += math.ceil(file_size / block_size)
             self.table.block_number = int((content_number + len(self.current_nodes)) * 1.5)
+            print("Bilgiler toplandı.")
             write_header()
+            print("Header yazıldı.")
             write_table_and_blocks()
-            messagebox.showinfo("Completed!");
+            messagebox.showinfo("", "Completed!")
         else:
-            messagebox.showerror("Wrong number or place")
+            messagebox.showerror("", "Error!")
 
     def open_file_system(self):
         file_path = filedialog.askopenfilename()
@@ -180,6 +196,7 @@ class FileSystem():
             self.reset()
             self.mode = "FileSystemToDirectory"
             treeview.heading("#0", text=file_path)
+            self.current_file_path = file_path
 
             # Read Table
             with open(file_path, "r+b") as file:
@@ -198,24 +215,233 @@ class FileSystem():
             treeview.insert("", "end", iid="1", text=f" {self.current_nodes[0].name}", open=True, image=photo_dir)
             for node in self.current_nodes[1:]:
                 node.insert()
+            self.last_id = self.current_nodes[-1].id
         else:
             self.reset()
             self.mode = "None"
+
+    def create_folder(self):
+        def create_paths(file_path):
+            root = file_path
+            for node in self.current_nodes:
+                if node.id == 1:
+                    node.path = os.path.join(root, node.name + "-unshuffled")
+                else:
+                    parent = next((obj for obj in self.current_nodes if obj.id == node.parent_id), None)
+                    node.path = os.path.join(parent.path, node.name)
+
+        folder_path = filedialog.askdirectory()
+        if folder_path:
+            create_paths(folder_path)
+            for node in self.current_nodes:
+                if node.is_folder:
+                    print(node.path)
+                    os.mkdir(node.path)
+                else:
+                    content_blocks = [block for block in self.table.block_list if block.status == 1 and block.file_no == node.id]
+                    content_blocks.sort(key=lambda x: x.order_no)
+                    data = []
+                    with open(self.current_file_path, "r+b") as file:
+                        for block in content_blocks:
+                            file.seek(block.offset)
+                            data.append(file.read(self.table.block_size))
+                    data[-1] = data[-1].strip(b'x\00')
+                    with open(node.path, "w+b") as file:
+                        for item in data:
+                            file.write(item)
+            messagebox.showinfo("", "Completed!")
+        else:
+            messagebox.showerror("", "Error!")
 
     def run(self):
         if self.mode == "DirectoryToFileSystem":
             self.create_file_system()
         elif self.mode == "FileSystemToDirectory":
-            pass
+            self.create_folder()
         else:
             messagebox.showwarning("Not selected a mode")
+
+    def new_file(self):
+        if self.mode == "FileSystemToDirectory":
+            if len(treeview.selection()) == 0 or len(treeview.selection()) > 1:
+                messagebox.showwarning("Warning", "Select one directory.")
+            else:
+                parent = treeview.selection()[0]
+                parent_node = next((node for node in self.current_nodes if node.id == int(parent)), None)
+                if parent_node.is_folder:
+                    file_name = simpledialog.askstring("File Name", "Type file name")
+                    if file_name is None or file_name == "":
+                        messagebox.showerror("Error", "There cannot be a file name empty.")
+                        return
+                    for child in treeview.get_children(parent):
+                        if f" {file_name}" == treeview.item(child, 'text'):
+                            messagebox.showerror("Error", "There cannot be two files with the same name.")
+                            return
+                    path = os.path.join(parent_node.path, file_name)
+                    self.last_id += 1
+                    node = Node(file_name, self.last_id, int(parent), False, path)
+                    print(node)
+                    print('Eklendi.')
+                    node.insert()
+                    treeview.update_idletasks()
+                    self.current_nodes.append(node)
+
+                    empty = None
+                    for block in self.table.block_list:
+                        if block.status == 0:
+                            empty = block
+                            break
+
+                    if empty is None:
+                        messagebox.showerror("", "Press the optimization button.")
+                        return
+
+                    block = Block(empty.id, empty.offset, 1, 0, node.id, 0)
+                    self.table.block_list[block.id - 1]  = block
+                    offset = struct.calcsize('2I') + struct.calcsize('6I') * (block.id - 1) 
+                    with open(self.current_file_path, 'r+b') as file:
+                        file.seek(offset)
+                        file.write(block.to_binary())
+                        file.seek(block.offset)
+                        file.write(node.to_binary())
+                    
+
+                    messagebox.showinfo("Info", "New file added.")
+                else:
+                    messagebox.showwarning("Warning", "Select one directory not file.")
+        else:
+            messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
+
+    def new_folder(self):
+        if self.mode == "FileSystemToDirectory":
+            if len(treeview.selection()) == 0 or len(treeview.selection()) > 1:
+                messagebox.showwarning("Warning", "Select one directory.")
+            else:
+                parent = treeview.selection()[0]
+                parent_node = next((node for node in self.current_nodes if node.id == int(parent)), None)
+                if parent_node.is_folder:
+                    file_name = simpledialog.askstring("File Name", "Type folder name")
+                    if file_name is None or file_name == "":
+                        messagebox.showerror("Error", "There cannot be a folder name empty.")
+                        return
+                    for child in treeview.get_children(parent):
+                        if f" {file_name}" == treeview.item(child, 'text'):
+                            messagebox.showerror("Error", "There cannot be two files with the same name.")
+                            return
+                    path = os.path.join(parent_node.path, file_name)
+                    self.last_id += 1
+                    
+                    node = Node(file_name, self.last_id, int(parent), True, path)
+                    print(node)
+                    print('Eklendi.')
+                    node.insert()
+                    treeview.update_idletasks()
+                    self.current_nodes.append(node)
+
+                    empty = None
+                    for block in self.table.block_list:
+                        if block.status == 0:
+                            empty = block
+                            break
+
+                    if empty is None:
+                        messagebox.showerror("", "Press the optimization button.")
+                        return
+
+                    block = Block(empty.id, empty.offset, 1, 0, node.id, 0)
+                    self.table.block_list[block.id - 1]  = block
+                    offset = struct.calcsize('2I') + struct.calcsize('6I') * (block.id - 1)  
+                    with open(self.current_file_path, 'r+b') as file:
+                        file.seek(offset)
+                        file.write(block.to_binary())
+                        file.seek(block.offset)
+                        file.write(node.to_binary())
+                    
+
+                    messagebox.showinfo("Info", "New file added.")
+                else:
+                    messagebox.showwarning("Warning", "Select one directory not file.")
+        else:
+            messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
+
+    def delete(self):
+        def delete_recursive(item):
+            if item not in deleted_items:
+                if not treeview.get_children(item):
+                    treeview.delete(item)
+                    deleted_items.append(item)
+                    self.current_nodes = [node for node in self.current_nodes if node.id != int(item)]
+                    return
+                else:
+                    for node in treeview.get_children(item):
+                        delete_recursive(node)
+                    treeview.delete(item)
+                    deleted_items.append(item)
+                    self.current_nodes = [node for node in self.current_nodes if node.id != int(item)]
+
+        if self.mode == "FileSystemToDirectory":
+            if messagebox.askokcancel("Question", "Are you sure?"):
+                flag = True
+                deleted_items = []
+                for node in treeview.selection():
+                    if int(node) == 1:
+                        head, tail = os.path.split(self.current_file_path)
+                        path = os.path.join(head, "file-system")
+                        os.remove(path)
+                        treeview.heading("#0", text="")
+                        self.clear_treeview()
+                        self.mode = 'None'
+                        flag = False
+                        break
+                    else:
+                        delete_recursive(node)
+                if flag:
+                    treeview.update_idletasks()
+                    
+                    node_block = []
+                    content_blocks = []
+                    for item in deleted_items:
+                        node_block.append(next((block for block in self.table.block_list if block.status == 1 and block.file_no == int(item) and block.type == 0), None))
+                        content_blocks.extend([block for block in self.table.block_list if block.status == 1 and block.file_no == int(item) and block.type == 1])
+                        
+                    list = []
+                    list.extend(node_block)
+                    list.extend(content_blocks)
+                    self.table.block_list = [block for block in self.table.block_list if block not in list]
+                    with open(self.current_file_path, 'r+b') as file:
+                        for item in list:
+                            offset = struct.calcsize('2I') + struct.calcsize('6I') * (item.id - 1)
+                            file.seek(offset)
+                            item.status = 0
+                            item.type = 0
+                            item.file_no = 0
+                            item.order_no = 0
+                            file.write(item.to_binary())
+
+                    messagebox.showinfo("Info", "Selected file(s) deleted.")
+                else:
+                    messagebox.showinfo("Info", "Shuffle File deleted.")
+        else:
+            messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
+
+    def rename(self):
+        if self.mode == "FileSystemToDirectory":
+            if len(treeview.selection()) == 0 or len(treeview.selection()) > 1:
+                messagebox.showwarning("Warning", "Select one file.")
+            else:
+                node_id = treeview.selection()[0]
+                
+        else:
+            messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
 
     @staticmethod
     def clear_treeview():
         for item in treeview.get_children():
             treeview.delete(item)
 
-
+    def print_nodes(self):
+        for node in self.current_nodes:
+            print(node)
 
 file_system = FileSystem()
 
@@ -281,15 +507,15 @@ if __name__ == "__main__":
     file_menu.add_command(label="Open Directory", command=file_system.open_folder, image=photo_export, compound=tk.LEFT)
 
     operation_menu = tk.Menu(menu_bar, tearoff=0, font=custom_font)
-    operation_menu.add_command(label="New File", command="select_new_file", image=photo_new_file, compound=tk.LEFT)
-    operation_menu.add_command(label="New Folder", command="select_new_folder", image=photo_new_folder, compound=tk.LEFT)
-    operation_menu.add_command(label="Edit", command="select_edit", image=photo_edit, compound=tk.LEFT)
-    operation_menu.add_command(label="Delete", command="select_delete", image=photo_delete, compound=tk.LEFT)
+    operation_menu.add_command(label="New File", command=file_system.new_file, image=photo_new_file, compound=tk.LEFT)
+    operation_menu.add_command(label="New Folder", command=file_system.new_folder, image=photo_new_folder, compound=tk.LEFT)
+    operation_menu.add_command(label="Edit", command='', image=photo_edit, compound=tk.LEFT)
+    operation_menu.add_command(label="Delete", command=file_system.delete, image=photo_delete, compound=tk.LEFT)
     operation_menu.add_command(label="Rename", command="select_rename", image=photo_rename, compound=tk.LEFT)
 
 
     test_menu = tk.Menu(menu_bar, tearoff=0, font=custom_font)
-    test_menu.add_command(label="Print Nodes", command="", image=photo_test, compound=tk.LEFT)
+    test_menu.add_command(label="Print Nodes", command=file_system.print_nodes, image=photo_test, compound=tk.LEFT)
     test_menu.add_command(label="Print Shuffle Info", command="", image=photo_test, compound=tk.LEFT)
     test_menu.add_command(label="Print Treeview Item", command="", image=photo_test, compound=tk.LEFT)
 
