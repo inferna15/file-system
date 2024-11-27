@@ -451,6 +451,7 @@ class FileSystem():
     def edit(self):
         def cancel():
             edit_window.destroy()
+            app.deiconify()
 
         def save_changes():
             new_content = text_area.get("1.0", "end-1c")
@@ -476,6 +477,8 @@ class FileSystem():
                     
                     for i in range(amount_of_new_block):
                         file.seek(new_blocks[i].offset)
+                        if len(new_data[len(data) + i]) < self.table.block_size:
+                            new_data[len(data) + i] = new_data[len(data) + i] + '\x00' * (self.table.block_size - len(new_data[len(data) + i]))
                         file.write(new_data[len(data) + i].encode("utf-8"))
                         offset = struct.calcsize('2I') + struct.calcsize('6I') * (new_blocks[i].id - 1)
                         file.seek(offset)
@@ -493,6 +496,8 @@ class FileSystem():
                     for i in range(len(new_data)):
                         if data[i] != new_data[i]:
                             file.seek(content_blocks[i].offset)
+                            if len(new_data[i]) < self.table.block_size:
+                                new_data[i] = new_data[i] + '\x00' * (self.table.block_size - len(new_data[i]))
                             file.write(new_data[i].encode("utf-8"))
 
                     for i in range(amount_of_deleted_block):
@@ -510,9 +515,21 @@ class FileSystem():
                     for i in range(len(new_data)):
                         if data[i] != new_data[i]:
                             file.seek(content_blocks[i].offset)
+                            if len(new_data[i]) < self.table.block_size:
+                                new_data[i] = new_data[i] + '\x00' * (self.table.block_size - len(new_data[i]))
                             file.write(new_data[i].encode("utf-8"))
 
             edit_window.destroy()
+            app.deiconify()
+
+        def edit_exit():
+            answer = messagebox.askyesnocancel("", "Should it save?")
+            if answer is Node:
+                return
+            elif answer:
+                save_changes()
+            else:
+                cancel()
 
         if self.mode == "FileSystemToDirectory":
             if len(treeview.selection()) == 0 or len(treeview.selection()) > 1:
@@ -523,20 +540,13 @@ class FileSystem():
                 if node.is_folder:
                     messagebox.showerror("Error", "Select one file.")
                 else:
+                    app.withdraw()
                     edit_window = Toplevel(app)
                     edit_window.title("edit")
                     edit_window.geometry(f"1000x500+{app.winfo_x()}+{app.winfo_y()}")
-                    edit_window.protocol("WM_DELETE_WINDOW", lambda : messagebox.showwarning("Warning", "Please make your edit on options menu."))
+                    edit_window.protocol("WM_DELETE_WINDOW", lambda : edit_exit())
                     edit_window.resizable(False, False)
                     edit_window.grab_set()
-
-                    edit_bar = tk.Menu(edit_window)
-                    edit_window.config(menu=edit_bar)
-
-                    edit_menu = tk.Menu(edit_bar, tearoff=0, font=custom_font)
-                    edit_menu.add_command(label="Save the changes", command=save_changes)
-                    edit_menu.add_command(label="Cancel", command=cancel)
-                    edit_bar.add_cascade(label="Options", menu=edit_menu)
 
                     text_area = tk.Text(edit_window, wrap=tk.WORD, font=custom_font)
                     text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -561,6 +571,26 @@ class FileSystem():
         else:
             messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
 
+    """
+    Tabledaki dolu sayısını al
+    1.5 ile çarp
+    table ı genişlet
+    içerikleri kaydır
+    """
+
+    def optimization(self):
+        number_of_non_empty = 0
+        for block in self.table.block_list:
+            if block.status == 1:
+                number_of_non_empty += 1
+
+        if number_of_non_empty > self.table.block_number:
+            pass
+        elif number_of_non_empty < self.table.block_number:
+            pass
+        else:
+            pass
+
     @staticmethod
     def clear_treeview():
         for item in treeview.get_children():
@@ -571,6 +601,10 @@ class FileSystem():
             print(node)
 
 file_system = FileSystem()
+
+class Main_Page():
+    def __init__(self):
+        pass
 
 if __name__ == "__main__":
     # App
