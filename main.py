@@ -151,7 +151,8 @@ class FileSystem():
                     with open(node.path, "r+b") as file:
                         data = file.read()
                     contents = [data[i:i+self.table.block_size] for i in range(0, len(data), self.table.block_size)]
-                    contents[-1] = contents[-1] + b'\x00' * (self.table.block_size - len(contents[-1]))
+                    if len(contents) > 0:
+                        contents[-1] = contents[-1] + b'\x00' * (self.table.block_size - len(contents[-1]))
                     with open(folder_path, "r+b") as file:
                         for i, content in enumerate(contents):
                             block_offset = offset + self.table.block_size * position_list[last_id]
@@ -304,9 +305,6 @@ class FileSystem():
                         file.write(block.to_binary())
                         file.seek(block.offset)
                         file.write(node.to_binary())
-                    
-
-                    messagebox.showinfo("Info", "New file added.")
                 else:
                     messagebox.showwarning("Warning", "Select one directory not file.")
         else:
@@ -356,9 +354,6 @@ class FileSystem():
                         file.write(block.to_binary())
                         file.seek(block.offset)
                         file.write(node.to_binary())
-                    
-
-                    messagebox.showinfo("Info", "New file added.")
                 else:
                     messagebox.showwarning("Warning", "Select one directory not file.")
         else:
@@ -417,8 +412,6 @@ class FileSystem():
                             item.file_no = 0
                             item.order_no = 0
                             file.write(item.to_binary())
-
-                    messagebox.showinfo("Info", "Selected file(s) deleted.")
                 else:
                     messagebox.showinfo("Info", "Shuffle File deleted.")
         else:
@@ -430,7 +423,141 @@ class FileSystem():
                 messagebox.showwarning("Warning", "Select one file.")
             else:
                 node_id = treeview.selection()[0]
-                
+                parent = treeview.parent(node_id)
+                rename = simpledialog.askstring("File Name", "Type file name")
+                if rename is None or rename == "":
+                    messagebox.showerror("Error", "There cannot be a file name empty.")
+                    return
+                for child in treeview.get_children(parent):
+                    if f" {rename}" == treeview.item(child, 'text'):
+                        messagebox.showerror("Error", "There cannot be two files with the same name.")
+                        return
+                treeview.item(node_id, text=f" {rename}")
+                item = next((item for item in self.current_nodes if item.id == int(node_id)), None)
+                item.name = rename
+                treeview.update_idletasks()
+                offset = struct.calcsize('2I') + struct.calcsize('6I') * (int(node_id) - 1) 
+                with open(self.current_file_path, 'r+b') as file:
+                    file.seek(offset)
+                    block = Block.from_binary(file.read(struct.calcsize('6I')))
+                    file.seek(block.offset)
+                    node = Node.from_binary(file.read(struct.calcsize("256sIII")))
+                    node.name = rename
+                    file.seek(block.offset)
+                    file.write(node.to_binary())
+        else:
+            messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
+
+    def edit(self):
+        def cancel():
+            edit_window.destroy()
+
+        def save_changes():
+            new_content = text_area.get("1.0", "end-1c")
+            new_data = [new_content[i:i+self.table.block_size] for i in range(0, len(new_content), self.table.block_size)]
+
+            if len(data) < len(new_data):
+                print(1)
+                amount_of_new_block = len(new_data) - len(data)
+                new_blocks = []
+                for i in range(amount_of_new_block):
+                    block = next((block for block in self.table.block_list if block.status == 0), None)
+                    if block is not None:
+                        new_blocks.append(block)
+                    else:
+                        messagebox.showerror("", "Press the optimization button.")
+                        return
+
+                with open(self.current_file_path, "r+b") as file:
+                    for i in range(len(data)):
+                        if data[i] != new_data[i]:
+                            file.seek(content_blocks[i].offset)
+                            file.write(new_data[i].encode("utf-8"))
+                    
+                    for i in range(amount_of_new_block):
+                        file.seek(new_blocks[i].offset)
+                        file.write(new_data[len(data) + i].encode("utf-8"))
+                        offset = struct.calcsize('2I') + struct.calcsize('6I') * (new_blocks[i].id - 1)
+                        file.seek(offset)
+                        new_blocks[i].status = 1
+                        new_blocks[i].type = 1
+                        new_blocks[i].file_no = int(selected)
+                        new_blocks[i].order_no = len(data) + i + 1
+                        file.write(new_blocks[i].to_binary())
+
+            elif len(data) > len(new_data):
+                print(2)
+                amount_of_deleted_block = len(data) - len(new_data)
+
+                with open(self.current_file_path, "r+b") as file:
+                    for i in range(len(new_data)):
+                        if data[i] != new_data[i]:
+                            file.seek(content_blocks[i].offset)
+                            file.write(new_data[i].encode("utf-8"))
+
+                    for i in range(amount_of_deleted_block):
+                        offset = struct.calcsize('2I') + struct.calcsize('6I') * (content_blocks[len(new_data) + i].id - 1)
+                        file.seek(offset)
+                        content_blocks[len(new_data) + i].status = 0
+                        content_blocks[len(new_data) + i].type = 0
+                        content_blocks[len(new_data) + i].file_no = 0
+                        content_blocks[len(new_data) + i].order_no = 0
+                        file.write(content_blocks[len(new_data) + i].to_binary())
+
+            else:
+                print(3)
+                with open(self.current_file_path, "r+b") as file:
+                    for i in range(len(new_data)):
+                        if data[i] != new_data[i]:
+                            file.seek(content_blocks[i].offset)
+                            file.write(new_data[i].encode("utf-8"))
+
+            edit_window.destroy()
+
+        if self.mode == "FileSystemToDirectory":
+            if len(treeview.selection()) == 0 or len(treeview.selection()) > 1:
+                messagebox.showwarning("Warning", "Select one file.")
+            else:
+                selected = treeview.selection()[0]
+                node = next((node for node in self.current_nodes if node.id == int(selected)), None)
+                if node.is_folder:
+                    messagebox.showerror("Error", "Select one file.")
+                else:
+                    edit_window = Toplevel(app)
+                    edit_window.title("edit")
+                    edit_window.geometry(f"1000x500+{app.winfo_x()}+{app.winfo_y()}")
+                    edit_window.protocol("WM_DELETE_WINDOW", lambda : messagebox.showwarning("Warning", "Please make your edit on options menu."))
+                    edit_window.resizable(False, False)
+                    edit_window.grab_set()
+
+                    edit_bar = tk.Menu(edit_window)
+                    edit_window.config(menu=edit_bar)
+
+                    edit_menu = tk.Menu(edit_bar, tearoff=0, font=custom_font)
+                    edit_menu.add_command(label="Save the changes", command=save_changes)
+                    edit_menu.add_command(label="Cancel", command=cancel)
+                    edit_bar.add_cascade(label="Options", menu=edit_menu)
+
+                    text_area = tk.Text(edit_window, wrap=tk.WORD, font=custom_font)
+                    text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+                    text_scroll = tk.Scrollbar(edit_window, orient=tk.VERTICAL, command=text_area.yview)
+                    text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+                    text_area.configure(yscrollcommand=text_scroll.set)
+
+                    content_blocks = [block for block in self.table.block_list if block.status == 1 and block.type == 1 and block.file_no == int(selected)]
+                    content_blocks.sort(key=lambda x: x.order_no)
+                    data = []
+                    with open(self.current_file_path, "r+b") as file:
+                        for block in content_blocks:
+                            file.seek(block.offset)
+                            data.append(file.read(self.table.block_size).decode("utf-8"))
+                    if len(data) > 0:
+                        data[-1] = data[-1].strip('x\00')
+                    for content in data:
+                        text_area.insert(tk.END, content)
+
         else:
             messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
 
@@ -509,9 +636,9 @@ if __name__ == "__main__":
     operation_menu = tk.Menu(menu_bar, tearoff=0, font=custom_font)
     operation_menu.add_command(label="New File", command=file_system.new_file, image=photo_new_file, compound=tk.LEFT)
     operation_menu.add_command(label="New Folder", command=file_system.new_folder, image=photo_new_folder, compound=tk.LEFT)
-    operation_menu.add_command(label="Edit", command='', image=photo_edit, compound=tk.LEFT)
+    operation_menu.add_command(label="Edit", command=file_system.edit, image=photo_edit, compound=tk.LEFT)
     operation_menu.add_command(label="Delete", command=file_system.delete, image=photo_delete, compound=tk.LEFT)
-    operation_menu.add_command(label="Rename", command="select_rename", image=photo_rename, compound=tk.LEFT)
+    operation_menu.add_command(label="Rename", command=file_system.rename, image=photo_rename, compound=tk.LEFT)
 
 
     test_menu = tk.Menu(menu_bar, tearoff=0, font=custom_font)
