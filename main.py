@@ -140,11 +140,11 @@ class FileSystem():
 
             last_id = 0
             for node in self.current_nodes:
-                print(f"{node.name} adlı dosyanın meta bilgileri yazdırılmaya başlandı.")
-                block_offset = offset + self.table.block_size * position_list[last_id]
-                last_id += 1
-                self.table.block_list.append(Block(last_id, block_offset, 1, 0, node.id, 0))
                 with open(folder_path, "r+b") as file:
+                    print(f"{node.name} adlı dosyanın meta bilgileri yazdırılmaya başlandı.")
+                    block_offset = offset + self.table.block_size * position_list[last_id]
+                    last_id += 1
+                    self.table.block_list.append(Block(last_id, block_offset, 1, 0, node.id, 0))
                     file.seek(block_offset)
                     file.write(node.to_binary())
                 if not node.is_folder:
@@ -172,7 +172,7 @@ class FileSystem():
                     file.write(block.to_binary())
 
 
-        block_size = simpledialog.askinteger("", "Type Part Size")
+        block_size = simpledialog.askinteger("", "Parça boyutunu yazın:")
         folder_path = filedialog.askdirectory()
         folder_path = os.path.join(folder_path, "file-system")
         if block_size > 0 and folder_path:
@@ -187,9 +187,9 @@ class FileSystem():
             write_header()
             print("Header yazıldı.")
             write_table_and_blocks()
-            messagebox.showinfo("", "Completed!")
+            messagebox.showinfo("Bilgi", "Dosya sistemi oluşturuldu.")
         else:
-            messagebox.showerror("", "Error!")
+            messagebox.showerror("Hata", "Bir sorun çıktı.")
 
     def open_file_system(self):
         file_path = filedialog.askopenfilename()
@@ -250,9 +250,9 @@ class FileSystem():
                     with open(node.path, "w+b") as file:
                         for item in data:
                             file.write(item)
-            messagebox.showinfo("", "Completed!")
+            messagebox.showinfo("Bilgi", "Dosya sistemi çıkartıldı.")
         else:
-            messagebox.showerror("", "Error!")
+            messagebox.showerror("Hata", "Bir sorun çıktı.")
 
     def run(self):
         if self.mode == "DirectoryToFileSystem":
@@ -260,23 +260,23 @@ class FileSystem():
         elif self.mode == "FileSystemToDirectory":
             self.create_folder()
         else:
-            messagebox.showwarning("Not selected a mode")
+            messagebox.showwarning("Uyarı", "Bir mod seçili değil.")
 
     def new_file(self):
         if self.mode == "FileSystemToDirectory":
             if len(treeview.selection()) == 0 or len(treeview.selection()) > 1:
-                messagebox.showwarning("Warning", "Select one directory.")
+                messagebox.showwarning("Uyarı", "Bir klasör seçiniz.")
             else:
                 parent = treeview.selection()[0]
                 parent_node = next((node for node in self.current_nodes if node.id == int(parent)), None)
                 if parent_node.is_folder:
-                    file_name = simpledialog.askstring("File Name", "Type file name")
+                    file_name = simpledialog.askstring("Dosya Adı", "Dosyanın adını yazınız:")
                     if file_name is None or file_name == "":
-                        messagebox.showerror("Error", "There cannot be a file name empty.")
+                        messagebox.showerror("Hata", "Dosya adı boş olamaz.")
                         return
                     for child in treeview.get_children(parent):
                         if f" {file_name}" == treeview.item(child, 'text'):
-                            messagebox.showerror("Error", "There cannot be two files with the same name.")
+                            messagebox.showerror("Hata", "Aynı isimde iki dosya aynı klasörde olamaz.")
                             return
                     path = os.path.join(parent_node.path, file_name)
                     self.last_id += 1
@@ -294,7 +294,7 @@ class FileSystem():
                             break
 
                     if empty is None:
-                        messagebox.showerror("", "Press the optimization button.")
+                        messagebox.showerror("Hata", "Optimizasyon tuşuna basınız.")
                         return
 
                     block = Block(empty.id, empty.offset, 1, 0, node.id, 0)
@@ -306,25 +306,25 @@ class FileSystem():
                         file.seek(block.offset)
                         file.write(node.to_binary())
                 else:
-                    messagebox.showwarning("Warning", "Select one directory not file.")
+                    messagebox.showwarning("Uyarı", "Bir klasör seçin dosya değil.")
         else:
-            messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
+            messagebox.showwarning("Uyarı", "Dosya sistemine daha dönüştürülmedi.")
 
     def new_folder(self):
         if self.mode == "FileSystemToDirectory":
             if len(treeview.selection()) == 0 or len(treeview.selection()) > 1:
-                messagebox.showwarning("Warning", "Select one directory.")
+                messagebox.showwarning("Uyarı", "Bir klasör seçiniz.")
             else:
                 parent = treeview.selection()[0]
                 parent_node = next((node for node in self.current_nodes if node.id == int(parent)), None)
                 if parent_node.is_folder:
-                    file_name = simpledialog.askstring("File Name", "Type folder name")
+                    file_name = simpledialog.askstring("Klasör Adı", "Klasörün adını yazınız:")
                     if file_name is None or file_name == "":
-                        messagebox.showerror("Error", "There cannot be a folder name empty.")
+                        messagebox.showerror("Hata", "Dosya adı boş olamaz.")
                         return
                     for child in treeview.get_children(parent):
                         if f" {file_name}" == treeview.item(child, 'text'):
-                            messagebox.showerror("Error", "There cannot be two files with the same name.")
+                            messagebox.showerror("Hata", "Aynı isimde iki dosya aynı klasörde olamaz.")
                             return
                     path = os.path.join(parent_node.path, file_name)
                     self.last_id += 1
@@ -343,7 +343,7 @@ class FileSystem():
                             break
 
                     if empty is None:
-                        messagebox.showerror("", "Press the optimization button.")
+                        messagebox.showerror("Hata", "Optimizasyon tuşuna basınız.")
                         return
 
                     block = Block(empty.id, empty.offset, 1, 0, node.id, 0)
@@ -355,9 +355,9 @@ class FileSystem():
                         file.seek(block.offset)
                         file.write(node.to_binary())
                 else:
-                    messagebox.showwarning("Warning", "Select one directory not file.")
+                    messagebox.showwarning("Uyarı", "Bir klasör seçin dosya değil.")
         else:
-            messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
+            messagebox.showwarning("Uyarı", "Dosya sistemine daha dönüştürülmedi.")
 
     def delete(self):
         def delete_recursive(item):
@@ -375,62 +375,63 @@ class FileSystem():
                     self.current_nodes = [node for node in self.current_nodes if node.id != int(item)]
 
         if self.mode == "FileSystemToDirectory":
-            if messagebox.askokcancel("Question", "Are you sure?"):
-                flag = True
-                deleted_items = []
-                for node in treeview.selection():
-                    if int(node) == 1:
-                        head, tail = os.path.split(self.current_file_path)
-                        path = os.path.join(head, "file-system")
-                        os.remove(path)
-                        treeview.heading("#0", text="")
-                        self.clear_treeview()
-                        self.mode = 'None'
-                        flag = False
-                        break
-                    else:
-                        delete_recursive(node)
-                if flag:
-                    treeview.update_idletasks()
-                    
-                    node_block = []
-                    content_blocks = []
-                    for item in deleted_items:
-                        node_block.append(next((block for block in self.table.block_list if block.status == 1 and block.file_no == int(item) and block.type == 0), None))
-                        content_blocks.extend([block for block in self.table.block_list if block.status == 1 and block.file_no == int(item) and block.type == 1])
+            if len(treeview.selection()) > 0:
+                if messagebox.askokcancel("Soru", "Emin misin?"):
+                    flag = True
+                    deleted_items = []
+                    for node in treeview.selection():
+                        if int(node) == 1:
+                            head, tail = os.path.split(self.current_file_path)
+                            path = os.path.join(head, "file-system")
+                            os.remove(path)
+                            treeview.heading("#0", text="")
+                            self.clear_treeview()
+                            self.mode = 'None'
+                            flag = False
+                            break
+                        else:
+                            delete_recursive(node)
+                    if flag:
+                        treeview.update_idletasks()
                         
-                    list = []
-                    list.extend(node_block)
-                    list.extend(content_blocks)
-                    self.table.block_list = [block for block in self.table.block_list if block not in list]
-                    with open(self.current_file_path, 'r+b') as file:
-                        for item in list:
-                            offset = struct.calcsize('2I') + struct.calcsize('6I') * (item.id - 1)
-                            file.seek(offset)
-                            item.status = 0
-                            item.type = 0
-                            item.file_no = 0
-                            item.order_no = 0
-                            file.write(item.to_binary())
-                else:
-                    messagebox.showinfo("Info", "Shuffle File deleted.")
+                        node_block = []
+                        content_blocks = []
+                        for item in deleted_items:
+                            node_block.append(next((block for block in self.table.block_list if block.status == 1 and block.file_no == int(item) and block.type == 0), None))
+                            content_blocks.extend([block for block in self.table.block_list if block.status == 1 and block.file_no == int(item) and block.type == 1])
+                            
+                        list = []
+                        list.extend(node_block)
+                        list.extend(content_blocks)
+                        self.table.block_list = [block for block in self.table.block_list if block not in list]
+                        with open(self.current_file_path, 'r+b') as file:
+                            for item in list:
+                                offset = struct.calcsize('2I') + struct.calcsize('6I') * (item.id - 1)
+                                file.seek(offset)
+                                item.status = 0
+                                item.type = 0
+                                item.file_no = 0
+                                item.order_no = 0
+                                file.write(item.to_binary())
+                    else:
+                        messagebox.showinfo("Bilgi", "Dosya sistemi silindi.")
         else:
-            messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
+            messagebox.showwarning("Uyarı", "Dosya sistemine daha dönüştürülmedi.")
 
     def rename(self):
         if self.mode == "FileSystemToDirectory":
             if len(treeview.selection()) == 0 or len(treeview.selection()) > 1:
-                messagebox.showwarning("Warning", "Select one file.")
+                messagebox.showwarning("Uyarı", "Bir dosya seçin.")
             else:
                 node_id = treeview.selection()[0]
                 parent = treeview.parent(node_id)
-                rename = simpledialog.askstring("File Name", "Type file name")
+                rename = simpledialog.askstring("Dosya Adı", "Dosyanın adını yazınız:")
                 if rename is None or rename == "":
-                    messagebox.showerror("Error", "There cannot be a file name empty.")
+                    messagebox.showerror("Hata", "Dosya adı boş olamaz.")
                     return
                 for child in treeview.get_children(parent):
                     if f" {rename}" == treeview.item(child, 'text'):
-                        messagebox.showerror("Error", "There cannot be two files with the same name.")
+                        messagebox.showerror("Hata", "Aynı isimde iki dosya aynı klasörde olamaz.")
                         return
                 treeview.item(node_id, text=f" {rename}")
                 item = next((item for item in self.current_nodes if item.id == int(node_id)), None)
@@ -446,7 +447,7 @@ class FileSystem():
                     file.seek(block.offset)
                     file.write(node.to_binary())
         else:
-            messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
+            messagebox.showwarning("Uyarı", "Dosya sistemine daha dönüştürülmedi.")
 
     def edit(self):
         def cancel():
@@ -523,7 +524,7 @@ class FileSystem():
             app.deiconify()
 
         def edit_exit():
-            answer = messagebox.askyesnocancel("", "Should it save?")
+            answer = messagebox.askyesnocancel("Soru", "Kaydedilsin mi?")
             if answer is Node:
                 return
             elif answer:
@@ -533,12 +534,12 @@ class FileSystem():
 
         if self.mode == "FileSystemToDirectory":
             if len(treeview.selection()) == 0 or len(treeview.selection()) > 1:
-                messagebox.showwarning("Warning", "Select one file.")
+                messagebox.showwarning("Uyarı", "Bir dosya seçin.")
             else:
                 selected = treeview.selection()[0]
                 node = next((node for node in self.current_nodes if node.id == int(selected)), None)
                 if node.is_folder:
-                    messagebox.showerror("Error", "Select one file.")
+                    messagebox.showerror("Hata", "Klasör seçmeyin.")
                 else:
                     app.withdraw()
                     edit_window = Toplevel(app)
@@ -569,13 +570,14 @@ class FileSystem():
                         text_area.insert(tk.END, content)
 
         else:
-            messagebox.showwarning("Warning", "Do this in file explorer. No need to do it here.")
+            messagebox.showwarning("Uyarı", "Dosya sistemine daha dönüştürülmedi.")
 
     """
     Tabledaki dolu sayısını al
     1.5 ile çarp
     table ı genişlet
     içerikleri kaydır
+    offsetleri düzelt
     """
 
     def optimization(self):
@@ -584,12 +586,78 @@ class FileSystem():
             if block.status == 1:
                 number_of_non_empty += 1
 
-        if number_of_non_empty > self.table.block_number:
-            pass
-        elif number_of_non_empty < self.table.block_number:
-            pass
+        default_number_of_non_empty = int((self.table.block_number * 2) / 3)
+
+        if number_of_non_empty > default_number_of_non_empty:
+            new_table_number = int(number_of_non_empty * 1.5)
+            new_position_list = [number for number in range(self.table.block_number, new_table_number)]
+            random.shuffle(new_position_list)
+            
+            last_id = self.table.block_number
+            offset = struct.calcsize("2I") + struct.calcsize("6I") * self.table.block_number
+
+            for position in new_position_list:
+                block_offset = offset + self.table.block_size * position
+                last_id += 1
+                self.table.block_list.append(Block(last_id, block_offset, 0, 0, 0, 0))
+            
+            new_offset = struct.calcsize("2I") + struct.calcsize("6I") * new_table_number
+            for block in self.table.block_list:
+                block.offset += new_offset - offset
+            with open(self.current_file_path, "r+b") as file:
+                file.seek(new_offset)
+
+                # İleride sorun çıkartabilir
+                data = file.read()      
+                file.seek(0)
+                self.table.block_number = new_table_number
+                file.write(self.table.to_binary())
+                for block in self.table.block_list:
+                    file.write(block.to_binary())
+                file.write(data)
+
+            messagebox.showinfo("Bilgi", "Optimizasyon tamamlandı.")
+
+        elif number_of_non_empty < default_number_of_non_empty:
+            new_table_number = int(number_of_non_empty * 1.5)
+            self.table.block_list.sort(key=lambda x: x.offset)
+            new_table = self.table.block_list[:new_table_number]
+            delete_table = self.table.block_list[new_table_number:]
+
+            offset = struct.calcsize("2I") + struct.calcsize("6I") * self.table.block_number
+            new_offset = struct.calcsize("2I") + struct.calcsize("6I") * new_table_number
+
+            with open(self.current_file_path, "r+b") as file:
+                for block in delete_table:
+                    if block.status == 1:
+                        new_block = next((block for block in new_table if block.status == 0), None)
+                        file.seek(block.offset)
+                        data = file.read(self.table.block_size)
+                        file.seek(new_block.offset)
+                        file.write(data)
+                        new_block.status = 1
+                        new_block.type = block.type
+                        new_block.file_no = block.file_no
+                        new_block.order_no = block.order_no
+                
+                file.seek(0)
+                self.table.block_number = new_table_number
+                file.write(self.table.to_binary())
+                self.table.block_list = new_table[:]
+
+                for i, block in enumerate(self.table.block_list):
+                    block.id = i + 1
+                    block.offset += new_offset - offset
+                    file.write(block.to_binary())
+                file.seek(offset)
+                data = file.read()
+                file.seek(new_offset)
+                file.write(data)
+
+            messagebox.showinfo("Bilgi", "Optimizasyon tamamlandı.")
+
         else:
-            pass
+            messagebox.showinfo("Bilgi", "Zaten optimize.")
 
     @staticmethod
     def clear_treeview():
@@ -643,7 +711,8 @@ if __name__ == "__main__":
         'new_folder': "assets/new_folder.png",
         'rename': "assets/rename.png",
         'run': "assets/run.png",
-        'test': "assets/test.png"
+        'test': "assets/test.png",
+        'optimize': "assets/optimize.png"
     }
 
     photo_file = create_icon(icons['file'])
@@ -657,22 +726,24 @@ if __name__ == "__main__":
     photo_rename = create_icon(icons['rename'])
     photo_run = create_icon(icons['run'])
     photo_test = create_icon(icons['test'])
+    photo_optimize = create_icon(icons['optimize'])
 
     # Menu
     menu_bar = tk.Menu(app)
     app.config(menu=menu_bar)
 
     file_menu = tk.Menu(menu_bar, tearoff=0, font=custom_font)
-    file_menu.add_command(label="Convert", command=file_system.run, image=photo_run, compound=tk.LEFT)
-    file_menu.add_command(label="Open Shuffle Item", command=file_system.open_file_system, image=photo_import, compound=tk.LEFT)
-    file_menu.add_command(label="Open Directory", command=file_system.open_folder, image=photo_export, compound=tk.LEFT)
+    file_menu.add_command(label="Optimize Et", command=file_system.optimization, image=photo_optimize, compound=tk.LEFT)
+    file_menu.add_command(label="Dönüştür", command=file_system.run, image=photo_run, compound=tk.LEFT)
+    file_menu.add_command(label="Dosya Sistem Seç", command=file_system.open_file_system, image=photo_import, compound=tk.LEFT)
+    file_menu.add_command(label="Klasör Seç", command=file_system.open_folder, image=photo_export, compound=tk.LEFT)
 
     operation_menu = tk.Menu(menu_bar, tearoff=0, font=custom_font)
-    operation_menu.add_command(label="New File", command=file_system.new_file, image=photo_new_file, compound=tk.LEFT)
-    operation_menu.add_command(label="New Folder", command=file_system.new_folder, image=photo_new_folder, compound=tk.LEFT)
-    operation_menu.add_command(label="Edit", command=file_system.edit, image=photo_edit, compound=tk.LEFT)
-    operation_menu.add_command(label="Delete", command=file_system.delete, image=photo_delete, compound=tk.LEFT)
-    operation_menu.add_command(label="Rename", command=file_system.rename, image=photo_rename, compound=tk.LEFT)
+    operation_menu.add_command(label="Yeni Dosya", command=file_system.new_file, image=photo_new_file, compound=tk.LEFT)
+    operation_menu.add_command(label="Yeni Klasör", command=file_system.new_folder, image=photo_new_folder, compound=tk.LEFT)
+    operation_menu.add_command(label="Düzenle", command=file_system.edit, image=photo_edit, compound=tk.LEFT)
+    operation_menu.add_command(label="Sil", command=file_system.delete, image=photo_delete, compound=tk.LEFT)
+    operation_menu.add_command(label="Yeniden İsimlendir", command=file_system.rename, image=photo_rename, compound=tk.LEFT)
 
 
     test_menu = tk.Menu(menu_bar, tearoff=0, font=custom_font)
@@ -680,9 +751,9 @@ if __name__ == "__main__":
     test_menu.add_command(label="Print Shuffle Info", command="", image=photo_test, compound=tk.LEFT)
     test_menu.add_command(label="Print Treeview Item", command="", image=photo_test, compound=tk.LEFT)
 
-    menu_bar.add_cascade(label="Commands", menu=file_menu)
-    menu_bar.add_cascade(label="Operations", menu=operation_menu)
-    menu_bar.add_cascade(label="Tests", menu=test_menu)
+    menu_bar.add_cascade(label="Komutlar", menu=file_menu)
+    menu_bar.add_cascade(label="Eylemler", menu=operation_menu)
+    menu_bar.add_cascade(label="Testler", menu=test_menu)
 
     # Main Frame
     main_frame = ttk.Frame(app, width=1000, height=500)
