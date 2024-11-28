@@ -239,14 +239,15 @@ class FileSystem():
                     print(node.path)
                     os.mkdir(node.path)
                 else:
-                    content_blocks = [block for block in self.table.block_list if block.status == 1 and block.file_no == node.id]
+                    content_blocks = [block for block in self.table.block_list if block.status == 1 and block.type == 1 and block.file_no == node.id]
                     content_blocks.sort(key=lambda x: x.order_no)
                     data = []
                     with open(self.current_file_path, "r+b") as file:
                         for block in content_blocks:
                             file.seek(block.offset)
                             data.append(file.read(self.table.block_size))
-                    data[-1] = data[-1].strip(b'x\00')
+                    if len(data) > 0:
+                        data[-1] = data[-1].strip(b'x\00')
                     with open(node.path, "w+b") as file:
                         for item in data:
                             file.write(item)
@@ -455,7 +456,7 @@ class FileSystem():
             app.deiconify()
 
         def save_changes():
-            new_content = text_area.get("1.0", "end-1c")
+            new_content = text_area.get("1.0", "end-1c").encode("utf-8")
             new_data = [new_content[i:i+self.table.block_size] for i in range(0, len(new_content), self.table.block_size)]
 
             if len(data) < len(new_data):
@@ -474,13 +475,13 @@ class FileSystem():
                     for i in range(len(data)):
                         if data[i] != new_data[i]:
                             file.seek(content_blocks[i].offset)
-                            file.write(new_data[i].encode("utf-8"))
+                            file.write(new_data[i])
                     
                     for i in range(amount_of_new_block):
                         file.seek(new_blocks[i].offset)
                         if len(new_data[len(data) + i]) < self.table.block_size:
-                            new_data[len(data) + i] = new_data[len(data) + i] + '\x00' * (self.table.block_size - len(new_data[len(data) + i]))
-                        file.write(new_data[len(data) + i].encode("utf-8"))
+                            new_data[len(data) + i] = new_data[len(data) + i] + b'\x00' * (self.table.block_size - len(new_data[len(data) + i]))
+                        file.write(new_data[len(data) + i])
                         offset = struct.calcsize('2I') + struct.calcsize('6I') * (new_blocks[i].id - 1)
                         file.seek(offset)
                         new_blocks[i].status = 1
@@ -498,8 +499,8 @@ class FileSystem():
                         if data[i] != new_data[i]:
                             file.seek(content_blocks[i].offset)
                             if len(new_data[i]) < self.table.block_size:
-                                new_data[i] = new_data[i] + '\x00' * (self.table.block_size - len(new_data[i]))
-                            file.write(new_data[i].encode("utf-8"))
+                                new_data[i] = new_data[i] + b'\x00' * (self.table.block_size - len(new_data[i]))
+                            file.write(new_data[i])
 
                     for i in range(amount_of_deleted_block):
                         offset = struct.calcsize('2I') + struct.calcsize('6I') * (content_blocks[len(new_data) + i].id - 1)
@@ -517,8 +518,8 @@ class FileSystem():
                         if data[i] != new_data[i]:
                             file.seek(content_blocks[i].offset)
                             if len(new_data[i]) < self.table.block_size:
-                                new_data[i] = new_data[i] + '\x00' * (self.table.block_size - len(new_data[i]))
-                            file.write(new_data[i].encode("utf-8"))
+                                new_data[i] = new_data[i] + b'\x00' * (self.table.block_size - len(new_data[i]))
+                            file.write(new_data[i])
 
             edit_window.destroy()
             app.deiconify()
@@ -563,9 +564,9 @@ class FileSystem():
                     with open(self.current_file_path, "r+b") as file:
                         for block in content_blocks:
                             file.seek(block.offset)
-                            data.append(file.read(self.table.block_size).decode("utf-8"))
+                            data.append(file.read(self.table.block_size))
                     if len(data) > 0:
-                        data[-1] = data[-1].strip('x\00')
+                        data[-1] = data[-1].strip(b'x\00')
                     for content in data:
                         text_area.insert(tk.END, content)
 
