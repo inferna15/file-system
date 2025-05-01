@@ -5,6 +5,7 @@ import os
 import struct
 import math
 import random
+import chiper_utils
 
 class Block():
     def __init__(self, block_id, offset, status, type, file_no, order_no):
@@ -87,6 +88,9 @@ class FileSystem():
         self.current_nodes = []
         self.table = Table()
         self.current_file_path = ""
+        self.salt = b'\x00'
+        self.key = b'\x00'
+        self.iv = b'\x00'
 
     def reset(self):
         self.mode = "None"
@@ -95,6 +99,9 @@ class FileSystem():
         self.current_file_path = ""
         self.table.reset()
         FileSystem.clear_treeview()
+        self.salt = b'\x00'
+        self.key = b'\x00'
+        self.iv = b'\x00'
 
     def open_folder(self):
         def create_nodes(parent):
@@ -170,7 +177,6 @@ class FileSystem():
                 file.seek(struct.calcsize("2I"))
                 for block in self.table.block_list:
                     file.write(block.to_binary())
-
 
         block_size = simpledialog.askinteger("", "Parça boyutunu yazın:")
         folder_path = filedialog.askdirectory()
@@ -573,14 +579,6 @@ class FileSystem():
         else:
             messagebox.showwarning("Uyarı", "Dosya sistemine daha dönüştürülmedi.")
 
-    """
-    Tabledaki dolu sayısını al
-    1.5 ile çarp
-    table ı genişlet
-    içerikleri kaydır
-    offsetleri düzelt
-    """
-
     def optimization(self):
         number_of_non_empty = 0
         for block in self.table.block_list:
@@ -670,10 +668,6 @@ class FileSystem():
             print(node)
 
 file_system = FileSystem()
-
-class Main_Page():
-    def __init__(self):
-        pass
 
 if __name__ == "__main__":
     # App
