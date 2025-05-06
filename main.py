@@ -664,7 +664,7 @@ class FileSystem():
             new_position_list = [number for number in range(self.table.block_number, new_table_number)]
             random.shuffle(new_position_list)
             
-            last_id = max(self.table.block_list, key=lambda x: x.id)
+            last_id = max(self.table.block_list, key=lambda x: x.id).id
             offset = 48 + 24 * self.table.block_number
 
             for position in new_position_list:
@@ -674,7 +674,7 @@ class FileSystem():
             
             new_offset = 48 + 24 * new_table_number
             for block in self.table.block_list:
-                block.offset += new_offset - offset
+                block.offset += (new_offset - offset)
             self.table.block_number = new_table_number
             with open(self.current_file_path, "r+b") as file:
                 file.seek(offset)
@@ -682,7 +682,7 @@ class FileSystem():
                 # İleride sorun çıkartabilir
                 data = file.read()      
 
-                file.seek(48)
+                file.seek(40)
                 file.write(chiper_utils.encrypt_data(self.table.to_binary(), self.key, self.nonce, 4))
                 for block in self.table.block_list:
                     file.write(chiper_utils.encrypt_data(block.to_binary(), self.key, self.nonce, block.id))
@@ -719,21 +719,43 @@ class FileSystem():
                         new_block.type = block.type
                         new_block.file_no = block.file_no
                         new_block.order_no = block.order_no
-                
-                file.seek(48)
-                self.table.block_number = new_table_number
-                file.write(chiper_utils.encrypt_data(self.table.to_binary(), self.key, self.nonce, 4))
+
+                self.table.block_list.clear()
                 self.table.block_list = new_table[:]
+                self.table.block_list.sort(key=lambda x: x.id)
+                self.table.block_number = new_table_number
 
                 for i, block in enumerate(self.table.block_list):
-                    block.offset += new_offset - offset
-                    file.write(chiper_utils.encrypt_data(block.to_binary(), self.key, self.nonce, block.id))
-                file.seek(offset)
+                    file.seek(48 + 24 * i)
+                    table_block = Block.from_binary(chiper_utils.decrypt_data(file.read(24), self.key, self.nonce, block.id))
+                    file.seek(block.offset)
+                    if block.type == 0:
+                        data = chiper_utils.decrypt_data(file.read(268), self.key, self.nonce, block.id)
+                    elif block.type == 1:
+                        data = chiper_utils.decrypt_data(file.read(self.table.block_size), self.key, self.nonce, block.id)
 
+                    block.id = i + 1
+                    file.seek(48 + 24 * i)
+                    file.write(chiper_utils.encrypt_data(table_block, self.key, self.nonce, block.id))
+                    file.seek(block.offset)
+                    if block.type == 0:
+                        file.write(chiper_utils.encrypt_data(data, self.key, self.nonce, block.id))
+                        file.write(chiper_utils.create_dummy_data(self.table.block_size - 268))
+                    elif block.type == 1:
+                        file.write(chiper_utils.encrypt_data(data, self.key, self.nonce, block.id))
+                    
+
+                file.seek(offset)
                 # İleride sorun çıkarabilir.
                 data = file.read()
-                file.seek(new_offset)
+
+                file.seek(40)
+                file.write(chiper_utils.encrypt_data(self.table.to_binary(), self.key, self.nonce, 4))      
+                for block in self.table.block_list:
+                    block.offset += (new_offset - offset)
+                    file.write(chiper_utils.encrypt_data(block.to_binary(), self.key, self.nonce, block.id))
                 file.write(data)
+                file.seek(0)
                 file.truncate(new_offset + self.table.block_size * self.table.block_number)
 
             messagebox.showinfo("Bilgi", "Optimizasyon tamamlandı.")
