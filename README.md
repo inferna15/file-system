@@ -21,4 +21,4 @@ Geleneksel dosya sistemleri yalnızca şifreleme ile korunmasına rağmen, içer
 - Proje, güvenli ve verimli bir yedekleme / saklama çözümü sağlamayı amaçlamaktadır.
 - Özellikle güvenlik, tersine mühendislikten korunma ve veri gizliliği önceliklidir.
 
-[Önceki Versiyon]([https://github.com/kullaniciadi/dicom-viewer](https://github.com/inferna15/shuffle-files))
+[Önceki Versiyon](https://github.com/inferna15/shuffle-files)
