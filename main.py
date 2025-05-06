@@ -62,13 +62,13 @@ class Node():
             treeview.insert(str(self.parent_id), "end", iid=str(self.id), text=f" {self.name}", image=photo_file)
 
     def to_binary(self):
-        return struct.pack("256sIII", self.name.encode('utf-8'), self.id, self.parent_id, self.is_folder)
+        return struct.pack("256sIII", self.name.encode('utf-8'), self.id, self.parent_id, 1 if self.is_folder else 0)
 
     @staticmethod
     def from_binary(binary_data):
         list = struct.unpack("256sIII", binary_data)
         name = list[0].strip(b'\x00').decode('utf-8')
-        is_folder = bool(list[3])
+        is_folder = True if list[3] == 1 else False
         return Node(name, list[1], list[2], is_folder, "")
 
     def __str__(self):
@@ -154,7 +154,7 @@ class FileSystem():
                 file.write(self.nonce)
                 file.write(chiper_utils.encrypt_data(self.salt, self.key, self.nonce, 3))
                 file.write(chiper_utils.encrypt_data(self.table.to_binary(), self.key, self.nonce, 4))
-                # 56 byte = 16 + 16 + 16 + 8
+                # 48 byte = 16 + 8 + 16 + 8
 
         def write_table_and_blocks():
             print("Tablo ve blok verileri oluşturuluyor.")
@@ -162,7 +162,7 @@ class FileSystem():
             position_list = [i for i in range(self.table.block_number)]
             random.shuffle(position_list)
 
-            offset = 56 + 24 * self.table.block_number
+            offset = 48 + 24 * self.table.block_number
 
             last_id = 0
             for node in self.current_nodes:
@@ -172,7 +172,7 @@ class FileSystem():
                     last_id += 1
                     self.table.block_list.append(Block(last_id, block_offset, 1, 0, node.id, 0))
                     file.seek(block_offset)
-                    # 268 byte = 256 + 4 + 4 + 4
+                    # 268 byte = 264 + 4 + 4 + 4
                     file.write(chiper_utils.encrypt_data(node.to_binary(), self.key, self.nonce, last_id))
                     file.write(chiper_utils.create_dummy_data(self.table.block_size - 268))
                 if not node.is_folder:
@@ -197,7 +197,7 @@ class FileSystem():
                 self.table.block_list.append(Block(last_id, block_offset, 0, 0, 0, 0))
             print("İçerikler yazdırılmaya başladı.")
             with open(folder_path, "r+b") as file:
-                file.seek(56)
+                file.seek(48)
                 for block in self.table.block_list:
                     file.write(chiper_utils.encrypt_data(block.to_binary(), self.key, self.nonce, block.id))
 
@@ -246,7 +246,7 @@ class FileSystem():
             with open(file_path, "r+b") as file:
                 print("Şifre çözülüyor.")
                 self.salt = file.read(16)
-                self.nonce = file.read(16)
+                self.nonce = file.read(8)
                 self.key = chiper_utils.create_key(password, self.salt)
                 verify_salt = chiper_utils.decrypt_data(file.read(16), self.key, self.nonce, 3)
                 if self.salt == verify_salt:
@@ -272,6 +272,7 @@ class FileSystem():
             for node in self.current_nodes[1:]:
                 node.insert()
             self.last_id = self.current_nodes[-1].id
+            print("Dosya sistemi açıldı.")
         else:
             self.reset()
             self.mode = "None"
@@ -358,7 +359,7 @@ class FileSystem():
 
                     block = Block(empty.id, empty.offset, 1, 0, node.id, 0)
                     self.table.block_list[block.id - 1] = block
-                    offset = 56 + 24 * (block.id - 1) 
+                    offset = 48 + 24 * (block.id - 1)
                     with open(self.current_file_path, 'r+b') as file:
                         file.seek(offset)
                         file.write(chiper_utils.encrypt_data(block.to_binary(), self.key, self.nonce, block.id))
@@ -411,7 +412,7 @@ class FileSystem():
 
                     block = Block(empty.id, empty.offset, 1, 0, node.id, 0)
                     self.table.block_list[block.id - 1]  = block
-                    offset = 56 + 24 * (block.id - 1)  
+                    offset = 48 + 24 * (block.id - 1)  
                     with open(self.current_file_path, 'r+b') as file:
                         file.seek(offset)
                         file.write(chiper_utils.encrypt_data(block.to_binary(), self.key, self.nonce, block.id))
@@ -472,7 +473,7 @@ class FileSystem():
                         self.table.block_list = [block for block in self.table.block_list if block not in list]
                         with open(self.current_file_path, 'r+b') as file:
                             for item in list:
-                                offset = 56 + 24 * (item.id - 1)
+                                offset = 48 + 24 * (item.id - 1)
                                 file.seek(offset)
                                 item.status = 0
                                 item.type = 0
@@ -545,7 +546,7 @@ class FileSystem():
                         if len(new_data[len(data) + i]) < self.table.block_size:
                             new_data[len(data) + i] = new_data[len(data) + i] + b'\x00' * (self.table.block_size - len(new_data[len(data) + i]))
                         file.write(chiper_utils.encrypt_data(new_data[len(data) + i], self.key, self.nonce, new_blocks[i].id))
-                        offset = 56 + 24 * (new_blocks[i].id - 1)
+                        offset = 48 + 24 * (new_blocks[i].id - 1)
                         file.seek(offset)
                         new_blocks[i].status = 1
                         new_blocks[i].type = 1
@@ -566,7 +567,7 @@ class FileSystem():
                             file.write(chiper_utils.encrypt_data(new_data[i], self.key, self.nonce, content_blocks[i].id))
 
                     for i in range(amount_of_deleted_block):
-                        offset = 56 + 24 * (content_blocks[len(new_data) + i].id - 1)
+                        offset = 48 + 24 * (content_blocks[len(new_data) + i].id - 1)
                         file.seek(offset)
                         content_blocks[len(new_data) + i].status = 0
                         content_blocks[len(new_data) + i].type = 0
@@ -657,73 +658,83 @@ class FileSystem():
         else:
             messagebox.showinfo("", "Veri optimize haldedir.")
 
-        # Boş yer 
+        # Arttırma
         if result and number_of_non_empty > default_number_of_non_empty:
             new_table_number = int(number_of_non_empty * 1.5)
             new_position_list = [number for number in range(self.table.block_number, new_table_number)]
             random.shuffle(new_position_list)
             
-            last_id = self.table.block_number
-            offset = 56 + 24 * self.table.block_number
+            last_id = max(self.table.block_list, key=lambda x: x.id)
+            offset = 48 + 24 * self.table.block_number
 
             for position in new_position_list:
                 block_offset = offset + self.table.block_size * position
                 last_id += 1
                 self.table.block_list.append(Block(last_id, block_offset, 0, 0, 0, 0))
             
-            new_offset = 56 + 24 * new_table_number
+            new_offset = 48 + 24 * new_table_number
             for block in self.table.block_list:
                 block.offset += new_offset - offset
+            self.table.block_number = new_table_number
             with open(self.current_file_path, "r+b") as file:
-                file.seek(new_offset)
+                file.seek(offset)
 
                 # İleride sorun çıkartabilir
                 data = file.read()      
 
-                file.seek(0)
-                self.table.block_number = new_table_number
-                file.write(self.table.to_binary())
+                file.seek(48)
+                file.write(chiper_utils.encrypt_data(self.table.to_binary(), self.key, self.nonce, 4))
                 for block in self.table.block_list:
-                    file.write(block.to_binary())
+                    file.write(chiper_utils.encrypt_data(block.to_binary(), self.key, self.nonce, block.id))
                 file.write(data)
 
             messagebox.showinfo("Bilgi", "Optimizasyon tamamlandı.")
 
+        # Azaltma
         elif result and number_of_non_empty < default_number_of_non_empty:
             new_table_number = int(number_of_non_empty * 1.5)
             self.table.block_list.sort(key=lambda x: x.offset)
             new_table = self.table.block_list[:new_table_number]
             delete_table = self.table.block_list[new_table_number:]
 
-            offset = 64 + 32 * self.table.block_number
-            new_offset = 64 + 32 * new_table_number
+            offset = 48 + 24 * self.table.block_number
+            new_offset = 48 + 24 * new_table_number
 
             with open(self.current_file_path, "r+b") as file:
                 for block in delete_table:
                     if block.status == 1:
                         new_block = next((block for block in new_table if block.status == 0), None)
                         file.seek(block.offset)
-                        data = file.read(self.table.block_size)
+                        if block.type == 0:
+                            data = chiper_utils.decrypt_data(file.read(268), self.key, self.nonce, block.id)
+                        elif block.type == 1:
+                            data = chiper_utils.decrypt_data(file.read(self.table.block_size), self.key, self.nonce, block.id)
                         file.seek(new_block.offset)
-                        file.write(data)
+                        if block.type == 0:
+                            file.write(chiper_utils.encrypt_data(data, self.key, self.nonce, new_block.id))
+                            file.write(chiper_utils.create_dummy_data(self.table.block_size - 268))
+                        elif block.type == 1:
+                            file.write(chiper_utils.encrypt_data(data, self.key, self.nonce, new_block.id))
                         new_block.status = 1
                         new_block.type = block.type
                         new_block.file_no = block.file_no
                         new_block.order_no = block.order_no
                 
-                file.seek(0)
+                file.seek(48)
                 self.table.block_number = new_table_number
-                file.write(self.table.to_binary())
+                file.write(chiper_utils.encrypt_data(self.table.to_binary(), self.key, self.nonce, 4))
                 self.table.block_list = new_table[:]
 
                 for i, block in enumerate(self.table.block_list):
-                    block.id = i + 1
                     block.offset += new_offset - offset
-                    file.write(block.to_binary())
+                    file.write(chiper_utils.encrypt_data(block.to_binary(), self.key, self.nonce, block.id))
                 file.seek(offset)
+
+                # İleride sorun çıkarabilir.
                 data = file.read()
                 file.seek(new_offset)
                 file.write(data)
+                file.truncate(new_offset + self.table.block_size * self.table.block_number)
 
             messagebox.showinfo("Bilgi", "Optimizasyon tamamlandı.")
 

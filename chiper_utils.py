@@ -10,7 +10,7 @@ def create_salt():
     return get_random_bytes(16)
 
 def create_nonce():
-    return get_random_bytes(16)
+    return get_random_bytes(8)
 
 def create_dummy_data(size):
     return get_random_bytes(size)
