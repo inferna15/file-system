@@ -90,7 +90,7 @@ class FileSystem():
         self.current_file_path = ""
         self.salt = b'\x00'
         self.key = b'\x00'
-        self.iv = b'\x00'
+        self.nonce = b'\x00'
 
     def reset(self):
         self.mode = "None"
@@ -101,7 +101,7 @@ class FileSystem():
         FileSystem.clear_treeview()
         self.salt = b'\x00'
         self.key = b'\x00'
-        self.iv = b'\x00'
+        self.nonce = b'\x00'
 
     def open_folder(self):
         def create_nodes(parent):
@@ -120,6 +120,7 @@ class FileSystem():
 
         folder_path = filedialog.askdirectory()
         if folder_path:
+            print(f"{folder_path} yoluna sahip olan klasör açılacak.")
             self.reset()
             self.mode = "DirectoryToFileSystem"
             treeview.heading("#0", text=folder_path)
@@ -136,14 +137,32 @@ class FileSystem():
 
     def create_file_system(self):
         def write_header():
+            print("Başlık verileri oluşturuluyor..")
+            print("Salt oluşturuluyor.")
+            self.salt = chiper_utils.create_salt()
+            print("Nonce oluşturuluyor.")
+            self.nonce = chiper_utils.create_nonce()
+            password = None
+            while password is None or len(password) != 4:
+                password = simpledialog.askstring("Şifre", "Şifreyi giriniz:")
+            print("Anahtar oluşturuluyor.")
+            self.key = chiper_utils.create_key(password, self.salt)
+
+            print("Başlık verileri yazdırılıyor.")
             with open(folder_path, "w+b") as file:
-                file.write(self.table.to_binary())
+                file.write(self.salt)
+                file.write(self.nonce)
+                file.write(chiper_utils.encrypt_data(self.salt, self.key, self.nonce, 3))
+                file.write(chiper_utils.encrypt_data(self.table.to_binary(), self.key, self.nonce, 4))
+                # 56 byte = 16 + 16 + 16 + 8
 
         def write_table_and_blocks():
+            print("Tablo ve blok verileri oluşturuluyor.")
+            print("Karıştırma işlemi yapılıyor.")
             position_list = [i for i in range(self.table.block_number)]
             random.shuffle(position_list)
 
-            offset = struct.calcsize("2I") + struct.calcsize("6I") * self.table.block_number
+            offset = 56 + 24 * self.table.block_number
 
             last_id = 0
             for node in self.current_nodes:
@@ -153,9 +172,13 @@ class FileSystem():
                     last_id += 1
                     self.table.block_list.append(Block(last_id, block_offset, 1, 0, node.id, 0))
                     file.seek(block_offset)
-                    file.write(node.to_binary())
+                    # 268 byte = 256 + 4 + 4 + 4
+                    file.write(chiper_utils.encrypt_data(node.to_binary(), self.key, self.nonce, last_id))
+                    file.write(chiper_utils.create_dummy_data(self.table.block_size - 268))
                 if not node.is_folder:
+                    print(f"{node.name} adlı dosyanın içerikleri yazdırılmaya başlandı.")
                     with open(node.path, "r+b") as file:
+                        # Dosya çok büyük olursa, bu kısımda sorun çıkabilir.
                         data = file.read()
                     contents = [data[i:i+self.table.block_size] for i in range(0, len(data), self.table.block_size)]
                     if len(contents) > 0:
@@ -166,7 +189,7 @@ class FileSystem():
                             last_id += 1
                             self.table.block_list.append(Block(last_id, block_offset, 1, 1, node.id, i + 1))
                             file.seek(block_offset)
-                            file.write(content)
+                            file.write(chiper_utils.encrypt_data(content, self.key, self.nonce, last_id))
             
             for i in range(self.table.block_number - len(self.table.block_list)):
                 block_offset = offset + self.table.block_size * position_list[last_id]
@@ -174,32 +197,46 @@ class FileSystem():
                 self.table.block_list.append(Block(last_id, block_offset, 0, 0, 0, 0))
             print("İçerikler yazdırılmaya başladı.")
             with open(folder_path, "r+b") as file:
-                file.seek(struct.calcsize("2I"))
+                file.seek(56)
                 for block in self.table.block_list:
-                    file.write(block.to_binary())
+                    file.write(chiper_utils.encrypt_data(block.to_binary(), self.key, self.nonce, block.id))
 
-        block_size = simpledialog.askinteger("", "Parça boyutunu yazın:")
+        print("Dosya sistemi oluşturulmaya başlandı.")
+        size = simpledialog.askinteger("", "Parça boyutunu yazın:")
+
+        # Bu kısım hoca ile konuşulacak.
+        # Değeri 1024'e tam bölünmüyorsa, bir üst 1024'e tamamla
+        block_size = size if size % 1024 == 0 else size + 1024 - (size % 1024)
+
         folder_path = filedialog.askdirectory()
         folder_path = os.path.join(folder_path, "file-system")
+        print(f"{folder_path} isimli dosya oluşturulacak.")
+        print(f"Parça boyutu: {block_size} byte")
         if block_size > 0 and folder_path:
+            print("Dosya sistemi oluşturuluyor.")
             self.table.block_size = block_size
-            content_number = 0
+            content_number = 0  # Buradan devam et
             for node in self.current_nodes:
                 if not node.is_folder:
                     file_size = os.path.getsize(node.path)
                     content_number += math.ceil(file_size / block_size)
             self.table.block_number = int((content_number + len(self.current_nodes)) * 1.5)
-            print("Bilgiler toplandı.")
+            print(f"Parça sayısı: {self.table.block_number}")
             write_header()
-            print("Header yazıldı.")
             write_table_and_blocks()
+            print("Dosya sistemi oluşturuldu.")
             messagebox.showinfo("Bilgi", "Dosya sistemi oluşturuldu.")
         else:
+            print("Dosya sistemi oluşturulamadı.")
             messagebox.showerror("Hata", "Bir sorun çıktı.")
 
     def open_file_system(self):
         file_path = filedialog.askopenfilename()
         if file_path:
+            password = None
+            while password is None or len(password) != 4:
+                password = simpledialog.askstring("Şifre", "Şifreyi giriniz:")
+            print(f"{file_path} isimli dosya sistemi açılacak.")
             self.reset()
             self.mode = "FileSystemToDirectory"
             treeview.heading("#0", text=file_path)
@@ -207,18 +244,30 @@ class FileSystem():
 
             # Read Table
             with open(file_path, "r+b") as file:
-                header = struct.unpack("2I", file.read(struct.calcsize("2I")))
-                self.table.block_size = header[0]
-                self.table.block_number = header[1]
-                for i in range(self.table.block_number):
-                    self.table.block_list.append(Block.from_binary(file.read(struct.calcsize("6I"))))
+                print("Şifre çözülüyor.")
+                self.salt = file.read(16)
+                self.nonce = file.read(16)
+                self.key = chiper_utils.create_key(password, self.salt)
+                verify_salt = chiper_utils.decrypt_data(file.read(16), self.key, self.nonce, 3)
+                if self.salt == verify_salt:
+                    print("Meta data okunuyor.")
+                    header = struct.unpack("2I", chiper_utils.decrypt_data(file.read(8), self.key, self.nonce, 4))
+                    self.table.block_size = header[0]
+                    self.table.block_number = header[1]
+                    for i in range(self.table.block_number):
+                        self.table.block_list.append(Block.from_binary(chiper_utils.decrypt_data(file.read(24), self.key, self.nonce, i + 1)))
 
-                node_blocks = [block for block in self.table.block_list if block.type == 0 and block.status == 1]
-                for block in node_blocks:
-                    file.seek(block.offset)
-                    self.current_nodes.append(Node.from_binary(file.read(struct.calcsize("256sIII"))))
-                self.current_nodes.sort(key=lambda x: x.id)
-
+                    node_blocks = [block for block in self.table.block_list if block.type == 0 and block.status == 1]
+                    for block in node_blocks:
+                        file.seek(block.offset)
+                        self.current_nodes.append(Node.from_binary(chiper_utils.decrypt_data(file.read(268), self.key, self.nonce, block.id)))
+                    self.current_nodes.sort(key=lambda x: x.id)
+                else:
+                    messagebox.showerror("Hata", "Şifre yanlış.")
+                    self.reset()
+                    self.mode = "None"
+                    return
+                    
             treeview.insert("", "end", iid="1", text=f" {self.current_nodes[0].name}", open=True, image=photo_dir)
             for node in self.current_nodes[1:]:
                 node.insert()
@@ -239,6 +288,7 @@ class FileSystem():
 
         folder_path = filedialog.askdirectory()
         if folder_path:
+            print(f"{self.current_file_path} isimli dosya sistemi {folder_path} yoluna çıkartılacak.")
             create_paths(folder_path)
             for node in self.current_nodes:
                 if node.is_folder:
@@ -251,7 +301,7 @@ class FileSystem():
                     with open(self.current_file_path, "r+b") as file:
                         for block in content_blocks:
                             file.seek(block.offset)
-                            data.append(file.read(self.table.block_size))
+                            data.append(chiper_utils.decrypt_data(file.read(self.table.block_size), self.key, self.nonce, block.id))
                     if len(data) > 0:
                         data[-1] = data[-1].strip(b'x\00')
                     with open(node.path, "w+b") as file:
@@ -289,7 +339,6 @@ class FileSystem():
                     self.last_id += 1
                     node = Node(file_name, self.last_id, int(parent), False, path)
                     print(node)
-                    print('Eklendi.')
                     node.insert()
                     treeview.update_idletasks()
                     self.current_nodes.append(node)
@@ -302,16 +351,21 @@ class FileSystem():
 
                     if empty is None:
                         messagebox.showerror("Hata", "Optimizasyon tuşuna basınız.")
+                        treeview.delete(str(node.id))
+                        treeview.update_idletasks()
+                        self.current_nodes.remove(node)
                         return
 
                     block = Block(empty.id, empty.offset, 1, 0, node.id, 0)
-                    self.table.block_list[block.id - 1]  = block
-                    offset = struct.calcsize('2I') + struct.calcsize('6I') * (block.id - 1) 
+                    self.table.block_list[block.id - 1] = block
+                    offset = 56 + 24 * (block.id - 1) 
                     with open(self.current_file_path, 'r+b') as file:
                         file.seek(offset)
-                        file.write(block.to_binary())
+                        file.write(chiper_utils.encrypt_data(block.to_binary(), self.key, self.nonce, block.id))
                         file.seek(block.offset)
-                        file.write(node.to_binary())
+                        file.write(chiper_utils.encrypt_data(node.to_binary(), self.key, self.nonce, block.id))
+                        file.write(chiper_utils.create_dummy_data(self.table.block_size - 268))
+                    print(f"{node.name} adlı dosya oluşturuldu.")
                 else:
                     messagebox.showwarning("Uyarı", "Bir klasör seçin dosya değil.")
         else:
@@ -338,7 +392,6 @@ class FileSystem():
                     
                     node = Node(file_name, self.last_id, int(parent), True, path)
                     print(node)
-                    print('Eklendi.')
                     node.insert()
                     treeview.update_idletasks()
                     self.current_nodes.append(node)
@@ -351,23 +404,28 @@ class FileSystem():
 
                     if empty is None:
                         messagebox.showerror("Hata", "Optimizasyon tuşuna basınız.")
+                        treeview.delete(str(node.id))
+                        treeview.update_idletasks()
+                        self.current_nodes.remove(node)
                         return
 
                     block = Block(empty.id, empty.offset, 1, 0, node.id, 0)
                     self.table.block_list[block.id - 1]  = block
-                    offset = struct.calcsize('2I') + struct.calcsize('6I') * (block.id - 1)  
+                    offset = 56 + 24 * (block.id - 1)  
                     with open(self.current_file_path, 'r+b') as file:
                         file.seek(offset)
-                        file.write(block.to_binary())
+                        file.write(chiper_utils.encrypt_data(block.to_binary(), self.key, self.nonce, block.id))
                         file.seek(block.offset)
-                        file.write(node.to_binary())
+                        file.write(chiper_utils.encrypt_data(node.to_binary(), self.key, self.nonce, block.id))
+                        file.write(chiper_utils.create_dummy_data(self.table.block_size - 268))
+                    print(f"{node.name} adlı klasör oluşturuldu.")
                 else:
                     messagebox.showwarning("Uyarı", "Bir klasör seçin dosya değil.")
         else:
             messagebox.showwarning("Uyarı", "Dosya sistemine daha dönüştürülmedi.")
 
     def delete(self):
-        def delete_recursive(item):
+        def delete_recursnoncee(item):
             if item not in deleted_items:
                 if not treeview.get_children(item):
                     treeview.delete(item)
@@ -376,7 +434,7 @@ class FileSystem():
                     return
                 else:
                     for node in treeview.get_children(item):
-                        delete_recursive(node)
+                        delete_recursnoncee(node)
                     treeview.delete(item)
                     deleted_items.append(item)
                     self.current_nodes = [node for node in self.current_nodes if node.id != int(item)]
@@ -395,9 +453,10 @@ class FileSystem():
                             self.clear_treeview()
                             self.mode = 'None'
                             flag = False
+                            print("Dosya sistemi silindi.")
                             break
                         else:
-                            delete_recursive(node)
+                            delete_recursnoncee(node)
                     if flag:
                         treeview.update_idletasks()
                         
@@ -413,13 +472,14 @@ class FileSystem():
                         self.table.block_list = [block for block in self.table.block_list if block not in list]
                         with open(self.current_file_path, 'r+b') as file:
                             for item in list:
-                                offset = struct.calcsize('2I') + struct.calcsize('6I') * (item.id - 1)
+                                offset = 56 + 24 * (item.id - 1)
                                 file.seek(offset)
                                 item.status = 0
                                 item.type = 0
                                 item.file_no = 0
                                 item.order_no = 0
-                                file.write(item.to_binary())
+                                file.write(chiper_utils.encrypt_data(item.to_binary(), self.key, self.nonce, item.id))
+                        print("Seçili dosyalar silindi.")
                     else:
                         messagebox.showinfo("Bilgi", "Dosya sistemi silindi.")
         else:
@@ -441,23 +501,20 @@ class FileSystem():
                         messagebox.showerror("Hata", "Aynı isimde iki dosya aynı klasörde olamaz.")
                         return
                 treeview.item(node_id, text=f" {rename}")
-                item = next((item for item in self.current_nodes if item.id == int(node_id)), None)
-                item.name = rename
+                node = next((node for node in self.current_nodes if node.id == int(node_id)), None)
+                node.name = rename
                 treeview.update_idletasks()
-                offset = struct.calcsize('2I') + struct.calcsize('6I') * (int(node_id) - 1) 
+                block = next((block for block in self.table.block_list if block.file_no == node.id), None)
                 with open(self.current_file_path, 'r+b') as file:
-                    file.seek(offset)
-                    block = Block.from_binary(file.read(struct.calcsize('6I')))
                     file.seek(block.offset)
-                    node = Node.from_binary(file.read(struct.calcsize("256sIII")))
-                    node.name = rename
-                    file.seek(block.offset)
-                    file.write(node.to_binary())
+                    file.write(chiper_utils.encrypt_data(node.to_binary(), self.key, self.nonce, block.id))
+                print(f"{node.name} adlı dosya yeniden adlandırıldı.")
         else:
             messagebox.showwarning("Uyarı", "Dosya sistemine daha dönüştürülmedi.")
 
     def edit(self):
         def cancel():
+            print("İçerikler güncellenmedi.")
             edit_window.destroy()
             app.deiconify()
 
@@ -481,20 +538,20 @@ class FileSystem():
                     for i in range(len(data)):
                         if data[i] != new_data[i]:
                             file.seek(content_blocks[i].offset)
-                            file.write(new_data[i])
+                            file.write(chiper_utils.encrypt_data(new_data[i], self.key, self.nonce, content_blocks[i].id))
                     
                     for i in range(amount_of_new_block):
                         file.seek(new_blocks[i].offset)
                         if len(new_data[len(data) + i]) < self.table.block_size:
                             new_data[len(data) + i] = new_data[len(data) + i] + b'\x00' * (self.table.block_size - len(new_data[len(data) + i]))
-                        file.write(new_data[len(data) + i])
-                        offset = struct.calcsize('2I') + struct.calcsize('6I') * (new_blocks[i].id - 1)
+                        file.write(chiper_utils.encrypt_data(new_data[len(data) + i], self.key, self.nonce, new_blocks[i].id))
+                        offset = 56 + 24 * (new_blocks[i].id - 1)
                         file.seek(offset)
                         new_blocks[i].status = 1
                         new_blocks[i].type = 1
                         new_blocks[i].file_no = int(selected)
                         new_blocks[i].order_no = len(data) + i + 1
-                        file.write(new_blocks[i].to_binary())
+                        file.write(chiper_utils.encrypt_data(new_blocks[i].to_binary(), self.key, self.nonce, new_blocks[i].id))
 
             elif len(data) > len(new_data):
                 print(2)
@@ -506,16 +563,16 @@ class FileSystem():
                             file.seek(content_blocks[i].offset)
                             if len(new_data[i]) < self.table.block_size:
                                 new_data[i] = new_data[i] + b'\x00' * (self.table.block_size - len(new_data[i]))
-                            file.write(new_data[i])
+                            file.write(chiper_utils.encrypt_data(new_data[i], self.key, self.nonce, content_blocks[i].id))
 
                     for i in range(amount_of_deleted_block):
-                        offset = struct.calcsize('2I') + struct.calcsize('6I') * (content_blocks[len(new_data) + i].id - 1)
+                        offset = 56 + 24 * (content_blocks[len(new_data) + i].id - 1)
                         file.seek(offset)
                         content_blocks[len(new_data) + i].status = 0
                         content_blocks[len(new_data) + i].type = 0
                         content_blocks[len(new_data) + i].file_no = 0
                         content_blocks[len(new_data) + i].order_no = 0
-                        file.write(content_blocks[len(new_data) + i].to_binary())
+                        file.write(chiper_utils.encrypt_data(content_blocks[len(new_data) + i].to_binary(), self.key, self.nonce, content_blocks[len(new_data) + i].id))
 
             else:
                 print(3)
@@ -525,14 +582,15 @@ class FileSystem():
                             file.seek(content_blocks[i].offset)
                             if len(new_data[i]) < self.table.block_size:
                                 new_data[i] = new_data[i] + b'\x00' * (self.table.block_size - len(new_data[i]))
-                            file.write(new_data[i])
+                            file.write(chiper_utils.encrypt_data(new_data[i], self.key, self.nonce, content_blocks[i].id))
 
+            print("İçerikler güncellendi.")
             edit_window.destroy()
             app.deiconify()
 
         def edit_exit():
             answer = messagebox.askyesnocancel("Soru", "Kaydedilsin mi?")
-            if answer is Node:
+            if answer is None:
                 return
             elif answer:
                 save_changes()
@@ -570,7 +628,7 @@ class FileSystem():
                     with open(self.current_file_path, "r+b") as file:
                         for block in content_blocks:
                             file.seek(block.offset)
-                            data.append(file.read(self.table.block_size))
+                            data.append(chiper_utils.decrypt_data(file.read(self.table.block_size), self.key, self.nonce, block.id))
                     if len(data) > 0:
                         data[-1] = data[-1].strip(b'x\00')
                     for content in data:
@@ -587,20 +645,33 @@ class FileSystem():
 
         default_number_of_non_empty = int((self.table.block_number * 2) / 3)
 
-        if number_of_non_empty > default_number_of_non_empty:
+        result = False
+        if number_of_non_empty < default_number_of_non_empty:
+            ratio = int(number_of_non_empty * 1.5) / len(self.table.block_list) * 100
+            size = (len(self.table.block_list) - int(number_of_non_empty * 1.5)) * self.table.block_size
+            result = messagebox.askyesno("", f"Veri %{ratio} oranına küçülecek yani {size} byte küçülecek. Emin misin?")
+        elif number_of_non_empty > default_number_of_non_empty:
+            ratio = int(number_of_non_empty * 1.5) / len(self.table.block_list) * 100
+            size = (int(number_of_non_empty * 1.5) - len(self.table.block_list)) * self.table.block_size
+            result = messagebox.askyesno("", f"Veri %{ratio} oranına büyüyecek yani {size} byte büyüyecek. Emin misin?")
+        else:
+            messagebox.showinfo("", "Veri optimize haldedir.")
+
+        # Boş yer 
+        if result and number_of_non_empty > default_number_of_non_empty:
             new_table_number = int(number_of_non_empty * 1.5)
             new_position_list = [number for number in range(self.table.block_number, new_table_number)]
             random.shuffle(new_position_list)
             
             last_id = self.table.block_number
-            offset = struct.calcsize("2I") + struct.calcsize("6I") * self.table.block_number
+            offset = 56 + 24 * self.table.block_number
 
             for position in new_position_list:
                 block_offset = offset + self.table.block_size * position
                 last_id += 1
                 self.table.block_list.append(Block(last_id, block_offset, 0, 0, 0, 0))
             
-            new_offset = struct.calcsize("2I") + struct.calcsize("6I") * new_table_number
+            new_offset = 56 + 24 * new_table_number
             for block in self.table.block_list:
                 block.offset += new_offset - offset
             with open(self.current_file_path, "r+b") as file:
@@ -608,6 +679,7 @@ class FileSystem():
 
                 # İleride sorun çıkartabilir
                 data = file.read()      
+
                 file.seek(0)
                 self.table.block_number = new_table_number
                 file.write(self.table.to_binary())
@@ -617,14 +689,14 @@ class FileSystem():
 
             messagebox.showinfo("Bilgi", "Optimizasyon tamamlandı.")
 
-        elif number_of_non_empty < default_number_of_non_empty:
+        elif result and number_of_non_empty < default_number_of_non_empty:
             new_table_number = int(number_of_non_empty * 1.5)
             self.table.block_list.sort(key=lambda x: x.offset)
             new_table = self.table.block_list[:new_table_number]
             delete_table = self.table.block_list[new_table_number:]
 
-            offset = struct.calcsize("2I") + struct.calcsize("6I") * self.table.block_number
-            new_offset = struct.calcsize("2I") + struct.calcsize("6I") * new_table_number
+            offset = 64 + 32 * self.table.block_number
+            new_offset = 64 + 32 * new_table_number
 
             with open(self.current_file_path, "r+b") as file:
                 for block in delete_table:
@@ -654,9 +726,6 @@ class FileSystem():
                 file.write(data)
 
             messagebox.showinfo("Bilgi", "Optimizasyon tamamlandı.")
-
-        else:
-            messagebox.showinfo("Bilgi", "Zaten optimize.")
 
     @staticmethod
     def clear_treeview():
